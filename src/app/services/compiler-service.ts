@@ -1,15 +1,18 @@
-import {Injectable} from '@angular/core';
+import {inject, Injectable} from '@angular/core';
+import {LoggingService} from './logging-service';
 
 @Injectable({
   providedIn: 'root',
 })
 export class CompilerService {
 
+  private readonly logger = inject(LoggingService);
 
   private tokenize(input: string): string[][] {
     return input
       .trim()
       .split("\n")
+      .filter(line => line.trim().length > 0)
       .map(line => line.trim().split(/\s+/));
   }
 
@@ -74,10 +77,9 @@ export class CompilerService {
           };
           instruction.children.push(immediate);
         } else {
-          log.push({
-            type: 'info',
-            msg: `Unbekannter Bezeichner: ${valueStr} in Zeile ${i + 1}. Wird später aufgelöst.`
-          });
+          this.logger.log(
+            `Unknown identifier: ${valueStr} on line ${i + 1}. Will be resolved later`, 'info'
+          );
 
           unresolvedLabelRefs.push(instruction);
         }
@@ -90,7 +92,7 @@ export class CompilerService {
 
         if (isRefInstruction) {
           const registerRef: RegisterRef = {
-            register: value,
+            value: value,
             type: 'register'
           };
           instruction.children.push(registerRef);
@@ -106,13 +108,11 @@ export class CompilerService {
       if (hasLabel && label) {
 
         if (label in labelLookup) {
-          log.push({
-            type: 'error',
-            msg: `Doppelter Bezeichner: ${label} in Zeile ${i + 1}`
-          });
+          this.logger.log(
+            `Duplicate identifier: ${label} in lines ${i + 1} and ${labelLookup[label] + 1}`, 'error'
+          );
           return {
-            ast: [],
-            log: log
+            ast: []
           }
         }
 
@@ -133,13 +133,12 @@ export class CompilerService {
       const labelRef = entry.children.find(child => (child as LabelRef).type === 'label_ref') as LabelRef;
 
       if (!labelRef) {
-        log.push({
-          type: 'error',
-          msg: `Fehlender Bezeichner-Referenz in Anweisung.`
-        });
+
+        this.logger.log(
+          'Unknown label reference.', 'error'
+        );
         return {
-          ast: [],
-          log: log
+          ast: []
         }
       }
 
@@ -153,20 +152,19 @@ export class CompilerService {
         };
         entry.children.push(immediate);
       } else {
-        log.push({
-          type: 'error',
-          msg: `Unbekannter Bezeichner: ${valueStr} konnte nicht aufgelöst werden.`
-        });
+
+        this.logger.log(
+          'Unknown label reference: ' + valueStr + ' could not be resolved on line ' + (instructions.indexOf(entry) + 1) + '.', 'error'
+        );
+
         return {
-          ast: [],
-          log: log
+          ast: []
         }
       }
     }
 
     return {
-      ast: instructions,
-      log: log
+      ast: instructions
     }
   }
 
@@ -196,7 +194,7 @@ export function extractImmediateValue(node: ASTNode): number | null {
 export function extractRegisterRef(node: ASTNode): number | null {
 
   if (node.type === 'register') {
-    return (node as RegisterRef).register;
+    return (node as RegisterRef).value;
   }
 
   if (node.type === 'instruction' && (node as Instruction).children.length > 0) {
@@ -212,7 +210,6 @@ export function extractRegisterRef(node: ASTNode): number | null {
 
 export interface ParseResult {
   ast: Instruction[];
-  log: { type: 'error'|'info', msg: string }[];
 }
 
 export interface ASTNode {
@@ -229,7 +226,7 @@ export interface Instruction extends ASTNode {
 
 export interface RegisterRef extends ASTNode {
   type: 'register'
-  register: number;
+  value: number;
 }
 
 export interface Label extends ASTNode {

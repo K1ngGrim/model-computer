@@ -3,285 +3,146 @@
   <div class="flex-grow flex flex-col min-w-0 bg-[#1e1e1e]">
 
     <!-- Editor Tabs + Toolbar -->
-    <div class="flex bg-[#252526] border-b border-[#1e1e1e] justify-between items-center pr-2 justify-end py-1">
-      <!-- Editor Toolbar -->
-      <div class="flex items-center gap-1 justify-end">
-        <button (click)="reset()" class="text-gray-400 hover:text-white p-1 rounded hover:bg-[#333]" title="Reset CPU"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg></button>
-        <button (click)="step()" class="text-blue-400 hover:text-blue-300 p-1 rounded hover:bg-[#333]" title="Step Over"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="10 15 15 20 20 15"></polyline><path d="M4 4h7a4 4 0 0 1 4 4v12"></path></svg></button>
-        <button (click)="run()" id="btn-run" class="text-green-500 hover:text-green-400 p-1 rounded hover:bg-[#333]" title="Run/Stop">
-          <svg id="icon-play" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9V3z"/></svg>
-          <svg id="icon-stop" class="hidden" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+    <div class="flex bg-[#252526] border-b border-[#1e1e1e] justify-between items-center pr-2 justify-end py-2">
+
+      <button (click)="run()" [disabled]="hasChanges()" class="text-gray-400 hover:text-white p-1 rounded hover:bg-[#333]" title="Run Program">
+        <mat-icon svgIcon="play"></mat-icon>
+      </button>
+
+      <button (click)="debug()" [disabled]="hasChanges()" class="text-gray-400 hover:text-white p-1 rounded hover:bg-[#333]" title="Debug Program">
+        <mat-icon svgIcon="bug-play"></mat-icon>
+      </button>
+
+      @if (isRunning()) {
+        <button (click)="stop()" class="text-gray-400 hover:text-white p-1 rounded hover:bg-[#333]" title="Reset CPU">
+          <mat-icon svgIcon="stop"></mat-icon>
         </button>
-      </div>
+
+        @if (isDebugMode()) {
+          <button (click)="stepForward()" class="text-gray-400 hover:text-white p-1 rounded hover:bg-[#333]" title="Step Instruction">
+            <mat-icon svgIcon="debug-step-over"></mat-icon>
+          </button>
+        }
+
+      } @else {
+        <button (click)="build()" class="text-gray-400 hover:text-white p-1 rounded hover:bg-[#333]" title="Build Program">
+          <mat-icon svgIcon="hammer"></mat-icon>
+        </button>
+      }
     </div>
 
-    <!-- Code Editor Wrapper -->
-    <div class="relative flex-grow flex overflow-hidden font-mono text-sm bg-[#1e1e1e]">
-      <div #editormonaco style="width: 100%;"></div>
-    </div>
+    <app-code-editor #codeEditor [(content)]="editorContent" (contentChange)="contentChange()"></app-code-editor>
 
-    <!-- BOTTOM PANEL (Terminal) -->
     <div class="h-40 bg-[#1e1e1e] border-t border-[#333] flex flex-col">
       <div class="flex text-[11px] uppercase border-b border-[#333] select-none bg-[#1e1e1e]">
-        <div class="px-4 py-1 text-gray-500 hover:text-gray-300 cursor-pointer">Problems</div>
+<!--        <div class="px-4 py-1 text-gray-500 hover:text-gray-300 cursor-pointer">Problems</div>-->
         <div class="px-4 py-1 text-white border-b border-white cursor-pointer bg-[#1e1e1e]">Output</div>
-        <div class="px-4 py-1 text-gray-500 hover:text-gray-300 cursor-pointer">Debug Console</div>
-        <div class="px-4 py-1 text-gray-500 hover:text-gray-300 cursor-pointer">Terminal</div>
+<!--        <div class="px-4 py-1 text-gray-500 hover:text-gray-300 cursor-pointer">Debug Console</div>-->
+<!--        <div class="px-4 py-1 text-gray-500 hover:text-gray-300 cursor-pointer">Terminal</div>-->
       </div>
       <div id="console-output" class="flex-grow p-2 font-mono text-xs overflow-y-auto text-gray-300">
-        <div class="mb-0.5"><span class="text-green-500 mr-2">[SYSTEM]</span>Extension "4-Bit Assembler" activated.</div>
+        @for (entry of logEntries(); track entry) {
+          <div class="mb-0.5">
+            <span
+            class="text-green-500 mr-2"
+            [ngClass]="{
+              'text-red-500': entry.type === 'error',
+              'text-yellow-500': entry.type === 'warn',
+              'text-green-500': entry.type === 'info'
+            }"
+            >[{{entry.type | uppercase}}]</span>{{entry.msg}}</div>
+        }
       </div>
     </div>
   </div>
 
-  <!-- RIGHT SIDEBAR (Debug) -->
-  <div class="w-64 bg-[#252526] border-l border-[#1e1e1e] flex flex-col text-xs overflow-hidden">
-    <div class="px-4 py-2 font-bold uppercase tracking-wider text-gray-400 bg-[#333] mb-1 flex justify-between items-center">
-      Run and Debug
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-    </div>
-
-    <div class="overflow-y-auto flex-grow">
-      <!-- REGISTERS -->
-      <div class="mt-2">
-        <div class="px-2 py-1 font-bold text-gray-300 flex items-center cursor-pointer hover:bg-[#2a2d2e] select-none group">
-          REGISTERS
-        </div>
-        <div id="registers-list">
-          <div class="px-4 py-0.5 flex justify-between group hover:bg-[#2a2d2e] cursor-pointer">
-            <span class="text-[#9cdcfe]">ACC</span>
-            <span class="text-[#b5cea8] font-mono"> <span class="text-gray-500">()</span></span>
-          </div>
-          <div class="px-4 py-0.5 flex justify-between group hover:bg-[#2a2d2e] cursor-pointer">
-            <span class="text-[#9cdcfe]">REG_B</span>
-            <span class="text-[#b5cea8] font-mono"> <span class="text-gray-500">()</span></span>
-          </div>
-          <div class="px-4 py-0.5 flex justify-between group hover:bg-[#2a2d2e] cursor-pointer">
-            <span class="text-[#9cdcfe]">PC</span>
-            <span class="text-[#ce9178] font-mono"></span>
-          </div>
-          <div class="px-4 py-0.5 flex justify-between group hover:bg-[#2a2d2e] cursor-pointer">
-            <span class="text-[#9cdcfe]">IR</span>
-            <span class="text-[#dcdcaa] font-mono"></span>
-          </div>
-        </div>
+  @if (processorService.cpu(); as state) {
+    <!-- RIGHT SIDEBAR (Debug) -->
+    <div class="w-64 bg-[#252526] border-l border-[#1e1e1e] flex flex-col text-xs overflow-hidden">
+      <div class="px-4 py-2 font-bold uppercase tracking-wider text-gray-400 bg-[#333] mb-1 flex justify-between items-center">
+        Run and Debug
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
       </div>
 
-      <!-- FLAGS -->
-      <div class="mt-4">
-        <div class="px-2 py-1 font-bold text-gray-300 flex items-center cursor-pointer hover:bg-[#2a2d2e] select-none">
-          FLAGS
-        </div>
-        <div class="px-4 py-1 flex gap-2" id="flags-container">
-          <span class="px-1.5 rounded text-[10px] font-bold transition-all ${flagClass(state.cpu.flags.z, 'bg-[#264f78]')}" title="Zero Flag">Z</span>
-          <span class="px-1.5 rounded text-[10px] font-bold transition-all ${flagClass(state.cpu.flags.c, 'bg-[#785406]')}" title="Carry Flag">C</span>
-          <span class="px-1.5 rounded text-[10px] font-bold transition-all ${flagClass(state.cpu.flags.n, 'bg-[#781212]')}" title="Negative Flag">N</span>
-
-        </div>
-      </div>
-
-      <!-- MEMORY -->
-      <div class="mt-4">
-        <div class="px-2 py-1 font-bold text-gray-300 flex items-center cursor-pointer hover:bg-[#2a2d2e] select-none">
-          INSTRUCTION MEMORY
-        </div>
-        <div id="memory-list" class="grid grid-cols-1 font-mono text-[10px]">
-          @for (entry of instructionRam(); track entry; let i = $index) {
-            <div class="px-4 py-0.5 flex gap-2 hover:bg-[#2a2d2e] cursor-pointer ${i === state.cpu.pc ? 'bg-[#37373d]' : ''}"
-                 [ngClass]="this.cpu().pc == i ? 'bg-[#37373d]' : ''"
-            >
-              <span class="text-gray-500 w-4">{{i}}</span>
-              <span class="text-[#b5cea8]">{{formatBin(entry)}}</span>
-              <span class="text-[#4ec9b0] ml-auto">{{entry}}</span>
+      <div class="overflow-y-auto flex-grow">
+        <div class="mt-2">
+          <div class="px-2 py-1 font-bold text-gray-300 flex items-center cursor-pointer hover:bg-[#2a2d2e] select-none group">
+            REGISTERS
+          </div>
+          <div id="registers-list">
+            <div class="px-4 py-0.5 flex justify-between group hover:bg-[#2a2d2e] cursor-pointer">
+              <span class="text-[#9cdcfe]">ACC</span>
+              <span class="text-[#b5cea8] font-mono"><span class="text-gray-500 me-2">({{formatBin(state.acc)}})</span> {{state.acc}}</span>
             </div>
-          }
-        </div>
-      </div>
-
-      <div class="mt-4">
-        <div class="px-2 py-1 font-bold text-gray-300 flex items-center cursor-pointer hover:bg-[#2a2d2e] select-none">
-          DATA MEMORY
-        </div>
-        <div id="memory-list" class="grid grid-cols-1 font-mono text-[10px]">
-          @for (entry of dataRam(); track entry; let i = $index) {
-            <div class="px-4 py-0.5 flex gap-2 hover:bg-[#2a2d2e] cursor-pointer ${i === state.cpu.pc ? 'bg-[#37373d]' : ''}">
-              <span class="text-gray-500 w-4">{{i}}</span>
-              <span class="text-[#b5cea8]">{{formatBin(entry)}}</span>
-              <span class="text-[#4ec9b0] ml-auto">{{entry}}</span>
+            <div class="px-4 py-0.5 flex justify-between group hover:bg-[#2a2d2e] cursor-pointer">
+              <span class="text-[#9cdcfe]">PC</span>
+              <span class="text-[#ce9178] font-mono">{{state.pc}}</span>
             </div>
-          }
+          </div>
+        </div>
+
+
+
+        <!-- FLAGS -->
+        <div class="mt-4">
+          <div class="px-2 py-1 font-bold text-gray-300 flex items-center cursor-pointer hover:bg-[#2a2d2e] select-none">
+            FLAGS
+          </div>
+          <div class="px-4 py-1 flex gap-2" id="flags-container">
+            <span
+              class="px-1.5 rounded text-[10px] font-bold transition-all"
+              title="Zero Flag"
+              [ngClass]="state.flags.z? 'bg-[#264f78]' : ''"
+            >Z</span>
+            <span
+              class="px-1.5 rounded text-[10px] font-bold transition-all"
+              title="Carry Flag"
+              [ngClass]="state.flags.c? 'bg-[#785406]' : ''"
+            >C</span>
+            <span
+              class="px-1.5 rounded text-[10px] font-bold transition-all"
+              title="Negative Flag"
+              [ngClass]="state.flags.n? 'bg-[#781212]' : ''"
+            >N</span>
+
+          </div>
+        </div>
+
+        <!-- MEMORY -->
+        <div class="mt-4">
+          <div class="px-2 py-1 font-bold text-gray-300 flex items-center cursor-pointer hover:bg-[#2a2d2e] select-none">
+            INSTRUCTION MEMORY
+          </div>
+          <div id="memory-list" class="grid grid-cols-1 font-mono text-[10px]">
+            @for (entry of processorService.readInstructionRam(); track i; let i = $index) {
+              <div class="px-4 py-0.5 flex gap-2 hover:bg-[#2a2d2e] cursor-pointer"
+                   [ngClass]="this.processorService.cpu().pc == i ? 'bg-[#37373d]' : ''"
+              >
+                <span class="text-gray-500 w-4">{{i}}</span>
+                <span class="text-[#b5cea8]">{{formatBin(entry)}}</span>
+                <span class="text-[#4ec9b0] ml-auto">{{entry}}</span>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <div class="px-2 py-1 font-bold text-gray-300 flex items-center cursor-pointer hover:bg-[#2a2d2e] select-none">
+            DATA MEMORY
+          </div>
+          <div id="memory-list" class="grid grid-cols-1 font-mono text-[10px]">
+            @for (entry of processorService.readDataRam(); track i; let i = $index) {
+              <div class="px-4 py-0.5 flex gap-2 hover:bg-[#2a2d2e] cursor-pointer"
+                   [ngClass]="processorService.cpu().pc == i ? 'bg-[#37373d]' : ''"
+              >
+                <span class="text-gray-500 w-4">{{i}}</span>
+                <span class="text-[#b5cea8]">{{formatBin(entry)}}</span>
+                <span class="text-[#4ec9b0] ml-auto">{{entry}}</span>
+              </div>
+            }
+          </div>
         </div>
       </div>
     </div>
-  </div>
-
-
-  <!-- HEADER -->
-<!--  <header class="bg-slate-800 p-4 rounded-lg shadow-lg border border-slate-700 flex justify-between items-center">-->
-<!--    <div>-->
-<!--      <h1 class="text-2xl font-bold text-emerald-400">4-Bit Modellrechner</h1>-->
-<!--      <p class="text-xs text-slate-400">UI Template</p>-->
-<!--    </div>-->
-<!--    -->
-<!--    -->
-<!--    -->
-<!--    -->
-<!--    -->
-
-<!--    &lt;!&ndash; Controls &ndash;&gt;-->
-<!--    <div class="flex gap-2">-->
-<!--      <button (click)="reset()" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-white text-sm transition-colors border border-slate-600">-->
-<!--        Reset-->
-<!--      </button>-->
-<!--      <button (click)="step()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-white text-sm transition-colors font-bold shadow-lg shadow-blue-900/50">-->
-<!--        Step-->
-<!--      </button>-->
-<!--      <button (click)="toggleRun()" [class.bg-red-600]="isRunning()" [class.bg-emerald-600]="!isRunning()" class="px-4 py-2 hover:opacity-90 rounded text-white text-sm transition-colors font-bold w-24">-->
-<!--        {{ isRunning() ? 'Stop' : 'Run' }}-->
-<!--      </button>-->
-<!--    </div>-->
-<!--  </header>-->
-
-<!--  &lt;!&ndash; MAIN CONTENT GRID &ndash;&gt;-->
-<!--  <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-grow">-->
-
-<!--    &lt;!&ndash; LEFT: CODE EDITOR (Spalte 1-4) &ndash;&gt;-->
-
-<!--    &lt;!&ndash; CENTER: CPU & REGISTERS (Spalte 5-8) &ndash;&gt;-->
-<!--    <div class="lg:col-span-4 flex flex-col gap-4">-->
-
-<!--      <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 shadow-lg relative overflow-hidden">-->
-<!--        <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider mb-6 border-b border-slate-700 pb-2">CPU Register</h2>-->
-
-<!--        &lt;!&ndash; Registers Grid &ndash;&gt;-->
-<!--        <div class="grid grid-cols-2 gap-4 mb-6">-->
-
-<!--          &lt;!&ndash; PC &ndash;&gt;-->
-<!--          <div class="bg-slate-900 p-3 rounded border border-slate-700 flex flex-col items-center">-->
-<!--            <span class="text-xs text-slate-500 font-bold mb-1">PC</span>-->
-<!--            <span class="text-2xl font-bold text-blue-400">{{ formatBin(cpu().pc) }}</span>-->
-<!--            <span class="text-xs text-slate-600 mt-1">Adr: {{ cpu().pc }}</span>-->
-<!--          </div>-->
-
-<!--          &lt;!&ndash; IR &ndash;&gt;-->
-<!--          <div class="bg-slate-900 p-3 rounded border border-slate-700 flex flex-col items-center">-->
-<!--            <span class="text-xs text-slate-500 font-bold mb-1">Instruction (IR)</span>-->
-<!--            &lt;!&ndash; Hier kannst du deinen Opcode-Decoder aufrufen &ndash;&gt;-->
-<!--            <span class="text-2xl font-bold text-purple-400">{{ formatHex(cpu().ir) }}</span>-->
-<!--            <span class="text-xs text-slate-600 mt-1">Opcode: {{ (shift(cpu().ir, 4)).toString(2) }}</span>-->
-<!--          </div>-->
-
-<!--          &lt;!&ndash; AKKU &ndash;&gt;-->
-<!--          <div class="bg-slate-900 p-3 rounded border-2 border-emerald-500/50 flex flex-col items-center col-span-1 shadow-[0_0_15px_rgba(16,185,129,0.1)]">-->
-<!--            <span class="text-xs text-emerald-500 font-bold mb-1">AKKU</span>-->
-<!--            <span class="text-4xl font-bold text-emerald-400 font-mono">{{ formatBin(cpu().acc) }}</span>-->
-<!--            <span class="text-xs text-emerald-700 mt-1">Dez: {{ cpu().acc }} | Hex: {{ formatHex(cpu().acc) }}</span>-->
-<!--          </div>-->
-
-<!--          &lt;!&ndash; REGISTER B &ndash;&gt;-->
-<!--          <div class="bg-slate-900 p-3 rounded border border-slate-600 flex flex-col items-center col-span-1">-->
-<!--            <span class="text-xs text-yellow-500 font-bold mb-1">REGISTER B</span>-->
-<!--            <span class="text-4xl font-bold text-yellow-400 font-mono">{{ formatBin(cpu().regB) }}</span>-->
-<!--            <span class="text-xs text-yellow-700 mt-1">Dez: {{ cpu().regB }} | Hex: {{ formatHex(cpu().regB) }}</span>-->
-<!--          </div>-->
-<!--        </div>-->
-
-<!--        &lt;!&ndash; Status Flags (Ampel) &ndash;&gt;-->
-<!--        <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 flex flex-col items-center">-->
-<!--          <span class="text-xs text-slate-500 font-bold mb-3 uppercase w-full text-center border-b border-slate-800 pb-2">Flags</span>-->
-<!--          <div class="flex justify-around w-full">-->
-
-<!--            &lt;!&ndash; Zero &ndash;&gt;-->
-<!--            <div class="flex flex-col items-center gap-2">-->
-<!--              <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all duration-300"-->
-<!--                   [class.bg-blue-500]="cpu().flags.z"-->
-<!--                   [class.border-blue-400]="cpu().flags.z"-->
-<!--                   [class.shadow-[0_0_10px_#3b82f6]]="cpu().flags.z"-->
-<!--                   [class.bg-slate-800]="!cpu().flags.z"-->
-<!--                   [class.border-slate-600]="!cpu().flags.z">-->
-<!--                <span class="font-bold text-white text-xs">Z</span>-->
-<!--              </div>-->
-<!--              <span class="text-[10px] text-slate-500">Zero</span>-->
-<!--            </div>-->
-
-<!--            &lt;!&ndash; Carry &ndash;&gt;-->
-<!--            <div class="flex flex-col items-center gap-2">-->
-<!--              <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all duration-300"-->
-<!--                   [class.bg-orange-500]="cpu().flags.c"-->
-<!--                   [class.border-orange-400]="cpu().flags.c"-->
-<!--                   [class.shadow-[0_0_10px_#f97316]]="cpu().flags.c"-->
-<!--                   [class.bg-slate-800]="!cpu().flags.c"-->
-<!--                   [class.border-slate-600]="!cpu().flags.c">-->
-<!--                <span class="font-bold text-white text-xs">C</span>-->
-<!--              </div>-->
-<!--              <span class="text-[10px] text-slate-500">Carry</span>-->
-<!--            </div>-->
-
-<!--            &lt;!&ndash; Negative &ndash;&gt;-->
-<!--            <div class="flex flex-col items-center gap-2">-->
-<!--              <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all duration-300"-->
-<!--                   [class.bg-red-500]="cpu().flags.n"-->
-<!--                   [class.border-red-400]="cpu().flags.n"-->
-<!--                   [class.shadow-[0_0_10px_#ef4444]]="cpu().flags.n"-->
-<!--                   [class.bg-slate-800]="!cpu().flags.n"-->
-<!--                   [class.border-slate-600]="!cpu().flags.n">-->
-<!--                <span class="font-bold text-white text-xs">N</span>-->
-<!--              </div>-->
-<!--              <span class="text-[10px] text-slate-500">Neg</span>-->
-<!--            </div>-->
-
-<!--          </div>-->
-<!--        </div>-->
-<!--      </div>-->
-<!--    </div>-->
-
-<!--    &lt;!&ndash; RIGHT: MEMORY (Spalte 9-12) &ndash;&gt;-->
-<!--    <div class="lg:col-span-4 flex flex-col gap-4">-->
-
-<!--      &lt;!&ndash; Befehls-RAM &ndash;&gt;-->
-<!--      <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 shadow-lg flex-1">-->
-<!--        <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-2">-->
-<!--          <span class="w-2 h-2 rounded-full bg-blue-500"></span> Befehls-RAM-->
-<!--        </h2>-->
-<!--        <div class="grid grid-cols-1 text-xs font-mono border-t border-slate-700">-->
-<!--          <div *ngFor="let cell of instructionRam(); let i = index"-->
-<!--               class="flex items-center p-1 border-b border-slate-700 transition-colors"-->
-<!--               [class.bg-blue-900]="i === cpu().pc"-->
-<!--               [class.text-white]="i === cpu().pc"-->
-<!--               [class.text-slate-400]="i !== cpu().pc">-->
-<!--            <span class="w-6 text-slate-500 mr-2">{{ i.toString(10).padStart(2, '0') }}:</span>-->
-<!--            <span class="flex-grow font-bold tracking-widest">-->
-<!--                  {{ formatBin(shift(cell, 4)) }} | {{ formatBin(mask4Bit(cell)) }}-->
-<!--                </span>-->
-<!--            <span class="text-emerald-400 w-12 text-right">-->
-<!--                  Val: {{ cell }}-->
-<!--                </span>-->
-<!--          </div>-->
-<!--        </div>-->
-<!--      </div>-->
-
-<!--      &lt;!&ndash; Daten-RAM &ndash;&gt;-->
-<!--      <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 shadow-lg flex-1">-->
-<!--        <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-2">-->
-<!--          <span class="w-2 h-2 rounded-full bg-yellow-500"></span> Daten-RAM-->
-<!--        </h2>-->
-<!--        <div class="grid grid-cols-4 gap-2">-->
-<!--          <div *ngFor="let cell of dataRam(); let i = index"-->
-<!--               class="relative bg-slate-900 border border-slate-700 p-2 rounded flex flex-col items-center justify-center">-->
-<!--            <span class="absolute top-0 left-1 text-[9px] text-slate-600">{{ i }}</span>-->
-<!--            <span class="text-lg font-bold text-yellow-100 font-mono mt-1">{{ cell }}</span>-->
-<!--            <span class="text-[9px] text-slate-500">{{ formatBin(cell) }}</span>-->
-<!--          </div>-->
-<!--        </div>-->
-<!--      </div>-->
-
-<!--    </div>-->
-
-<!--  </div>-->
-
-<!--  &lt;!&ndash; Footer Output Log &ndash;&gt;-->
-<!--  <div class="bg-slate-950 p-2 rounded border border-slate-800 text-xs font-mono text-slate-500 h-24 overflow-y-auto">-->
-<!--    <div *ngFor="let log of logs">{{ log }}</div>-->
-<!--  </div>-->
-
+  }
 </div>
