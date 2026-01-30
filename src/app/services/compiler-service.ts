@@ -21,7 +21,6 @@ export class CompilerService {
     const instructions: Instruction[] = [];
 
     const labelLookup: {[key: string]: number} = {};
-    const log: { type: 'error'|'info', msg: string }[] = [];
     const unresolvedLabelRefs: Instruction[] = [];
 
     for (let i = 0; i < tokens.length; i++) {

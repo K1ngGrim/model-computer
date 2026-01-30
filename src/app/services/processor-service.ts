@@ -93,7 +93,16 @@ export class ProcessorService {
       });
 
     } else if (instruction.inst === 'ADD_R') {
-      // handle ADD_R
+      const registerValue = extractRegisterRef(instruction) ?? 0;
+      const immediateValue = this.dataRam()[registerValue];
+
+      this.cpu.update(cpu => {
+        cpu.acc = mask4Bit(cpu.acc + immediateValue);
+        // Set Flags
+        cpu.flags.z = (cpu.acc === 0);
+        cpu.flags.n = ((cpu.acc & 0x08) !== 0); // Check MSB for negative
+        return cpu;
+      });
 
     } else if (instruction.inst === 'SUB') {
       const immediateValue = extractImmediateValue(instruction) ?? 0;
@@ -107,7 +116,16 @@ export class ProcessorService {
       });
 
     } else if (instruction.inst === 'SUB_R') {
-      // handle SUB_R
+      const registerValue = extractRegisterRef(instruction) ?? 0;
+      const immediateValue = this.dataRam()[registerValue];
+
+      this.cpu.update(cpu => {
+        cpu.acc = mask4Bit(cpu.acc - immediateValue);
+        // Set Flags
+        cpu.flags.z = (cpu.acc === 0);
+        cpu.flags.n = ((cpu.acc & 0x08) !== 0);
+        return cpu;
+      });
 
     } else if (instruction.inst === 'JMP') {
       const immediateValue = extractImmediateValue(instruction) ?? 0;
