@@ -1,12 +1,5 @@
 import {inject, Injectable, signal} from '@angular/core';
-import {
-  CompilerService,
-  extractImmediateValue,
-  extractRegisterRef,
-  Immediate,
-  Instruction,
-  ParseResult, RegisterRef
-} from './compiler-service';
+import {CompilerService, Immediate, ParseResult, RegisterRef} from './compiler-service';
 import {LoggingService} from './logging-service';
 
 @Injectable({
@@ -18,7 +11,6 @@ export class ProcessorService {
   private readonly logger = inject(LoggingService);
 
   public readonly isDebugMode = signal(false);
-
   public readonly isRunning = signal(false);
 
   private readonly instructionRam = signal<number[]>(new Array(16).fill(0));
@@ -45,126 +37,73 @@ export class ProcessorService {
     return this.dataRam();
   }
 
-  public execInstruction(instruction: Instruction){
+  get nextInstruction() {
+    const cpu = this.cpu();
+    const pc = cpu.pc;
+
+    const instructionRam = this.instructionRam();
+    const dataRam = this.dataRam();
+
+    const instructionCode = instructionRam[pc] ?? 0;
+    const dataCode = dataRam[pc] ?? 0;
+
+    return { instructionCode, dataCode };
+  }
+
+  public execInstruction(instruction: number, data: number): boolean {
     const cpu = this.cpu();
 
-    if (instruction.inst === 'NOP') {
+    const parsedInstruction = this.getKeyByValue(instruction);
+
+    if (!parsedInstruction) {
+      this.logger.log(`Unbekannter Befehlscode: ${formatHex(instruction)}`, 'error');
       return false;
-    } else if (instruction.inst === 'LDA') {
-      const immediateValue = extractImmediateValue(instruction) ?? 0;
+    }
 
-      this.cpu.update(cpu => {
-        cpu.acc = mask4Bit(immediateValue);
-        cpu.flags.z = (cpu.acc === 0);
-        cpu.flags.n = ((cpu.acc & 0x08) !== 0);
-        return cpu;
-      });
+    if (parsedInstruction === 'NOP') {
+      return false;
+    } else if (parsedInstruction === 'LDA') {
+      this.lda(data);
 
-    } else if (instruction.inst === 'LDA_R') {
-      const registerValue = extractRegisterRef(instruction) ?? 0;
-      const immediateValue = this.dataRam()[registerValue];
+    } else if (parsedInstruction === 'LDA_R') {
+      const immediateValue = this.dataRam()[data];
+      this.lda(immediateValue);
 
-      this.cpu.update(cpu => {
-        cpu.acc = mask4Bit(immediateValue);
-        // Set Flags
-        cpu.flags.z = (cpu.acc === 0);
-        cpu.flags.n = ((cpu.acc & 0x08) !== 0); // Check MSB for negative
-        return cpu;
-      });
+    } else if (parsedInstruction === 'STA_R') {
+      this.sta(data)
 
-    } else if (instruction.inst === 'STA_R') {
-      const registerValue = extractRegisterRef(instruction) ?? 0;
-      const accValue = this.cpu().acc;
+    } else if (parsedInstruction === 'ADD') {
+      this.add(data);
 
-      this.dataRam.update(ram => {
-        ram[registerValue] = mask4Bit(accValue);
-        return ram;
-      });
+    } else if (parsedInstruction === 'ADD_R') {
+      const immediateValue = this.dataRam()[data];
+      this.add(immediateValue);
 
-    } else if (instruction.inst === 'ADD') {
-      const immediateValue = extractImmediateValue(instruction) ?? 0;
+    } else if (parsedInstruction === 'SUB') {
+      this.add(-data);
 
-      this.cpu.update(cpu => {
-        cpu.acc = mask4Bit(cpu.acc + immediateValue);
-        // Set Flags
-        cpu.flags.z = (cpu.acc === 0);
-        cpu.flags.n = ((cpu.acc & 0x08) !== 0); // Check MSB for negative
-        return cpu;
-      });
+    } else if (parsedInstruction === 'SUB_R') {
+      const immediateValue = this.dataRam()[data];
+      this.add(-immediateValue);
 
-    } else if (instruction.inst === 'ADD_R') {
-      const registerValue = extractRegisterRef(instruction) ?? 0;
-      const immediateValue = this.dataRam()[registerValue];
-
-      this.cpu.update(cpu => {
-        cpu.acc = mask4Bit(cpu.acc + immediateValue);
-        // Set Flags
-        cpu.flags.z = (cpu.acc === 0);
-        cpu.flags.n = ((cpu.acc & 0x08) !== 0); // Check MSB for negative
-        return cpu;
-      });
-
-    } else if (instruction.inst === 'SUB') {
-      const immediateValue = extractImmediateValue(instruction) ?? 0;
-
-      this.cpu.update(cpu => {
-        cpu.acc = mask4Bit(cpu.acc - immediateValue);
-        // Set Flags
-        cpu.flags.z = (cpu.acc === 0);
-        cpu.flags.n = ((cpu.acc & 0x08) !== 0); // Check MSB for negative
-        return cpu;
-      });
-
-    } else if (instruction.inst === 'SUB_R') {
-      const registerValue = extractRegisterRef(instruction) ?? 0;
-      const immediateValue = this.dataRam()[registerValue];
-
-      this.cpu.update(cpu => {
-        cpu.acc = mask4Bit(cpu.acc - immediateValue);
-        // Set Flags
-        cpu.flags.z = (cpu.acc === 0);
-        cpu.flags.n = ((cpu.acc & 0x08) !== 0);
-        return cpu;
-      });
-
-    } else if (instruction.inst === 'JMP') {
-      const immediateValue = extractImmediateValue(instruction) ?? 0;
-
-      this.cpu.update(cpu => {
-        cpu.pc = mask4Bit(immediateValue);
-        return cpu;
-      });
+    } else if (parsedInstruction === 'JMP') {
+      this.jump(data);
       return true;
 
-    } else if (instruction.inst === 'BRZ') {
+    } else if (parsedInstruction === 'BRZ') {
       if (cpu.flags.z) {
-        const immediateValue = extractImmediateValue(instruction) ?? 0;
-
-        this.cpu.update(cpu => {
-          cpu.pc = mask4Bit(cpu.pc + immediateValue);
-          return cpu;
-        });
+        this.branch(data);
         return true;
       }
-    } else if (instruction.inst === 'BRC') {
+    } else if (parsedInstruction === 'BRC') {
       if (cpu.flags.c) {
-        const immediateValue = extractImmediateValue(instruction) ?? 0;
-
-        this.cpu.update(cpu => {
-          cpu.pc = mask4Bit(cpu.pc + immediateValue);
-          return cpu;
-        });
+        this.branch(data);
         return true;
       }
 
-    } else if (instruction.inst === 'BRN') {
+    } else if (parsedInstruction === 'BRN') {
       if (cpu.flags.n) {
-        const immediateValue = extractImmediateValue(instruction) ?? 0;
-
-        this.cpu.update(cpu => {
-          cpu.pc = mask4Bit(cpu.pc + immediateValue);
-          return cpu;
-        });
+        this.branch(data);
         return true;
       }
     }
@@ -175,6 +114,9 @@ export class ProcessorService {
   public build(code: string) {
     const s = this.compiler.compile(code) as ParseResult;
     this.buildResult.set(s);
+
+    this.instructionRam.set(new Array(16).fill(0))
+    this.dataRam.set(new Array(16).fill(0));
 
     for (let i = 0; i < s.ast.length; i++) {
       const instr = s.ast[i];
@@ -222,15 +164,24 @@ export class ProcessorService {
         break;
       }
 
-      const instruction = ast[pc];
+      const instruction = this.nextInstruction;
 
-      const branched = this.execInstruction(instruction);
+      const pcOld = cpu.pc;
+
+      const branched = this.execInstruction(instruction.instructionCode, instruction.dataCode);
 
       if (!branched) {
         this.cpu.update(cpu => {
           cpu.pc = mask4Bit(cpu.pc + 1);
           return cpu;
         });
+      }else {
+        if (instruction.dataCode === pcOld) {
+          this.logger.log('The program ran into an infinite loop. The program stopped.', 'warn');
+          this.isDebugMode.set(false);
+          this.isRunning.set(false);
+          break;
+        }
       }
     }
   }
@@ -238,16 +189,8 @@ export class ProcessorService {
   public step(){
     if (!this.buildResult()) return;
 
-    const cpu = this.cpu();
-    const pc = cpu.pc;
-
-    const ast = this.buildResult()!.ast;
-
-    const instruction = ast[pc];
-
-    console.log(instruction);
-
-    const branched = this.execInstruction(instruction);
+    const instruction = this.nextInstruction;
+    const branched = this.execInstruction(instruction.instructionCode, instruction.dataCode);
 
     if (!branched) {
       this.cpu.update(cpu => {
@@ -257,7 +200,7 @@ export class ProcessorService {
     }
   }
 
-  reset() {
+  public reset() {
     this.cpu.set({
       acc: 0, pc: 0, ir: 0,
       flags: { z: false, n: false, c: false }
@@ -265,6 +208,11 @@ export class ProcessorService {
 
     this.isDebugMode.set(false);
     this.isRunning.set(false);
+  }
+
+  private getKeyByValue(value: number): string | undefined {
+    return Object.keys(this.instructionMap)
+      .find(key => this.instructionMap[key] === value);
   }
 
   private readonly instructionMap: {[key: string]: number} = {
@@ -282,6 +230,48 @@ export class ProcessorService {
     'BRN': 0x0B,
   };
 
+  private add(num: number) {
+    this.cpu.update(cpu => {
+      cpu.acc = mask4Bit(cpu.acc + num);
+      cpu.flags.z = (cpu.acc === 0);
+      cpu.flags.c = (cpu.acc + num) > 0b1111;
+      cpu.flags.n = ((cpu.acc & 0x08) !== 0);
+      return cpu;
+    });
+  }
+
+  private jump(address: number) {
+    this.cpu.update(cpu => {
+      cpu.pc = mask4Bit(address);
+      return cpu;
+    });
+  }
+
+  private branch(step: number) {
+    this.cpu.update(cpu => {
+      cpu.pc = mask4Bit(cpu.pc + step);
+      return cpu;
+    });
+  }
+
+  private lda(value: number) {
+    this.cpu.update(cpu => {
+      cpu.acc = mask4Bit(value);
+      cpu.flags.z = (cpu.acc === 0);
+      cpu.flags.c = (cpu.acc) > 0b1111;
+      cpu.flags.n = ((cpu.acc & 0x08) !== 0);
+      return cpu;
+    });
+  }
+
+  private sta(address: number) {
+    const accValue = this.cpu().acc;
+
+    this.dataRam.update(ram => {
+      ram[address] = mask4Bit(accValue);
+      return ram;
+    });
+  }
 }
 
 export function formatBin(val: number): string {

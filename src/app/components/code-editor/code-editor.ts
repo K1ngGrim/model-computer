@@ -1,6 +1,6 @@
 import {AfterViewInit, Component, ElementRef, input, model, OnChanges, SimpleChanges, viewChild} from '@angular/core';
 import * as monaco from 'monaco-editor'
-import {editor} from 'monaco-editor';
+import {editor} from 'monaco-editor'
 import IEditorDecorationsCollection = editor.IEditorDecorationsCollection;
 
 @Component({
@@ -60,7 +60,7 @@ export class CodeEditor implements AfterViewInit, OnChanges {
     this.debugDecorations = this.editor.createDecorationsCollection();
   }
 
-  setDebugLine(line: number) {
+  public setDebugLine(line: number) {
     this.debugDecorations.set([]);
     this.debugDecorations.set([
       {
@@ -74,6 +74,10 @@ export class CodeEditor implements AfterViewInit, OnChanges {
     ]);
 
     this.editor.revealLineInCenterIfOutsideViewport(line);
+  }
+
+  public resetDebugLine() {
+    this.debugDecorations.set([]);
   }
 
   public reformatCode() {
@@ -93,7 +97,7 @@ export class CodeEditor implements AfterViewInit, OnChanges {
       tokenizer: {
         root: [
           [/;.*/, 'comment'],
-          [/\b(NOP|STA|LDA|ADD|SUB|JMP|BRZ|BRC|BRN)\b/i, 'keyword'],
+          [/\b(NOP|STA|LDA|ADD|SUB|JMP|BRZ|BRC|BRN|END)\b/i, 'keyword'],
           [/\b(\d+|\(\d+\))\b/, 'variable'],
           [/\b#(0x[0-9A-Fa-f]+|\d+)\b/, 'number'],
           [/^[A-Za-z_][\w]*:/, 'type'],

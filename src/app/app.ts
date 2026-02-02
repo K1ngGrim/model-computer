@@ -1,4 +1,4 @@
-import {Component, computed, ElementRef, inject, signal, viewChild} from '@angular/core';
+import {Component, computed, inject, signal, viewChild} from '@angular/core';
 import {FormsModule} from '@angular/forms';
 import {NgClass, UpperCasePipe} from '@angular/common';
 import {MatIcon, MatIconRegistry} from '@angular/material/icon';
@@ -38,7 +38,8 @@ export class App {
 SUB #1
 STA 15
 BRN #2
-JMP loop`);
+JMP loop
+END`);
 
   constructor() {
     this.matIconRegistry.addSvgIconSet(
@@ -72,6 +73,7 @@ JMP loop`);
 
   protected stop() {
     this.isEditorReadOnly.set(false);
+    this.editor()?.resetDebugLine();
     this.processorService.reset();
   }
 

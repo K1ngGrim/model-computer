@@ -32,11 +32,11 @@ export class CompilerService {
 
       const label = hasLabel ? line[0].slice(1) : null;
       const cmd = line[hasLabel ? 1 : 0];
-      const rawValue = line[hasLabel ? 2 : 1];
+      const rawValue = line[hasLabel ? 2 : 1]??'';
 
       let isRefInstruction = false;
 
-      if ((!cmd || !rawValue) && !hasLabel) {
+      if (cmd !== 'END' && (!cmd || !rawValue) && !hasLabel) {
         throw new Error("Ungültiger Befehl");
       }else if ((!cmd || !rawValue) && hasLabel) {
 
@@ -46,7 +46,7 @@ export class CompilerService {
         type: 'instruction',
       } as Instruction;
       instruction.children = [];
-      let valueStr = rawValue;
+      let valueStr = rawValue??'';
 
       if (rawValue.startsWith('#') || cmd === "JMP") {
         instruction.inst = cmd as InstructionType;
@@ -62,29 +62,39 @@ export class CompilerService {
 
       instruction.mnemonic = cmd;
 
-      if (cmd === "JMP") {
+      if (cmd === "JMP" || cmd === "END") {
 
-        const labelRef: LabelRef = {
-          type: 'label_ref',
-          name: valueStr
-        };
+        if (cmd === "END") {
+          instruction.inst = "JMP";
+          instruction.mnemonic = "JMP";
 
-        if (valueStr in labelLookup) {
           const immediate: Immediate = {
             type: 'immediate',
-            value: labelLookup[valueStr]
+            value: i
           };
           instruction.children.push(immediate);
-        } else {
-          this.logger.log(
-            `Unknown identifier: ${valueStr} on line ${i + 1}. Will be resolved later`, 'info'
-          );
+          console.log(instruction);
+        }else {
+          const labelRef: LabelRef = {
+            type: 'label_ref',
+            name: valueStr
+          };
 
-          unresolvedLabelRefs.push(instruction);
+          if (valueStr in labelLookup) {
+            const immediate: Immediate = {
+              type: 'immediate',
+              value: labelLookup[valueStr]
+            };
+            instruction.children.push(immediate);
+          } else {
+            this.logger.log(
+              `Unknown identifier: ${valueStr} on line ${i + 1}. Will be resolved later`, 'info'
+            );
+
+            unresolvedLabelRefs.push(instruction);
+          }
+          instruction.children.push(labelRef);
         }
-
-
-        instruction.children.push(labelRef);
       } else {
         const value = Number(valueStr);
         if (isNaN(value)) throw new Error(`Ungültige Zahl: ${rawValue}`);
@@ -172,39 +182,6 @@ export class CompilerService {
     return this.parseInstructions(lines);
   }
 
-}
-
-export function extractImmediateValue(node: ASTNode): number | null {
-  if (node.type === 'immediate') {
-    return (node as Immediate).value;
-  }
-
-  if (node.type === 'instruction' && (node as Instruction).children.length > 0) {
-    for (const child of (node as Instruction).children) {
-      const val = extractImmediateValue(child);
-      if (val !== null) {
-        return val;
-      }
-    }
-  }
-  return null;
-}
-
-export function extractRegisterRef(node: ASTNode): number | null {
-
-  if (node.type === 'register') {
-    return (node as RegisterRef).value;
-  }
-
-  if (node.type === 'instruction' && (node as Instruction).children.length > 0) {
-    for (const child of (node as Instruction).children) {
-      const val = extractRegisterRef(child);
-      if (val !== null) {
-        return val;
-      }
-    }
-  }
-  return null;
 }
 
 export interface ParseResult {
